@@ -1,10 +1,11 @@
+from .constants import INDENT
 import re
 
 def indent(line, indentation):
     if not indentation:
         return line
     
-    spaces = ''.join([' ' for _ in xrange(indentation)])
+    spaces = ''.join([' ' for _ in xrange(indentation * INDENT)])
     return spaces + line
 
 def indentation(haml):

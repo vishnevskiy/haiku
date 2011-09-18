@@ -3,7 +3,7 @@ from . import utils
 import re
 
 _AUTOCLOSE = ('meta', 'img', 'link', 'br', 'hr', 'input', 'area', 'param', 'col', 'base',)
-_HAML_REGEX = re.compile(r'(?P<tag>%\w+)?(?P<id>#[\w-]*)?(?P<class>\.[\w\.-]*)*(?P<attributes>\{.*\})?(?P<autoclose>/)?(?P<evaluate>=)?(?P<content>[^\w\.#\{].*)?')
+_HAML_REGEX = re.compile(r'(?P<tag>%\w+)?(?P<id>#[:_\w-]*)?(?P<class>\.[:\w\.-]*)*(?P<attributes>\{.*\})?(?P<autoclose>/)?(?P<evaluate>=)?(?P<content>[^\w\.#\{].*)?')
 _NEWLINE = '\n'
 
 class HTMLElement(object):
@@ -24,7 +24,7 @@ class HTMLElement(object):
             attributes.append('id="%s"' % self.id)
 
         if self.classes:
-            attributes.append('class="%s"' % ' '.join(self._flatten(self.classes)))
+            attributes.append('class="%s"' % ' '.join(self.classes))
 
         for k, v in self.attributes.items():
             v = self._get_html_value(v)
@@ -49,41 +49,54 @@ class HTMLElement(object):
 
         if 'id' in self.attributes:
             if isinstance(self.attributes['id'], (list, tuple)):
-                self.id += self.attributes['id']
+                self.id.append(self.attributes['id'])
             else:
-                self.id = self.attributes['id']
+                self.id.append(self.attributes['id'])
 
             del self.attributes['id']
 
         self.id = '_'.join(self._flatten(self.id))
 
         # Parse Classes
-        self.classes = groups.get('class').lstrip(OPERATORS['class']).split('.')
-
-        if not self.classes[0]:
-            self.classes.pop()
-
+        self.classes = set()
+ 
         if 'class' in self.attributes:
-            self.classes.push(self.attributes['class'])
+            for class_ in self._flatten(self.attributes['class']):
+                if class_:
+                    self.classes.add(class_)
+
+            del self.attributes['class']
+
+        for class_ in groups.get('class').lstrip(OPERATORS['class']).split('.'):
+            if class_:
+                self.classes.add(class_)
+
+        self.classes = sorted(self.classes)
 
         self.autoclose = not not groups.get('autoclose') or self.tag in _AUTOCLOSE
         self.evaluate = not not groups.get('evaluate')
         self.content = groups.get('content').strip()
 
     def _get_html_value(self, v):
+        if not v:
+            return ''
+
         if isinstance(v, (str, unicode)) and v and v[0] == OPERATORS['evaluate']:
             return '{{ %s }}' % (v.lstrip(OPERATORS['evaluate']).strip())
 
         return  utils.xhtml_escape(v)
 
     def _flatten(self, iterable):
-        for value in iterable:
-            if isinstance(value, (list, tuple)):
-                for sub_value in self._flatten(value):
-                    if sub_value:
-                        yield self._get_html_value(sub_value)
-            elif value:
-                yield self._get_html_value(value)
+        if not isinstance(iterable, (list, tuple)):
+            yield self._get_html_value(iterable)
+        else:
+            for value in iterable:
+                if isinstance(value, (list, tuple)):
+                    for sub_value in self._flatten(value):
+                        if sub_value:
+                            yield self._get_html_value(sub_value)
+                elif value:
+                    yield self._get_html_value(value)
 
     def get_inline_content(self):
         inline_content = self.content

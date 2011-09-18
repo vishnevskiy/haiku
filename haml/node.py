@@ -1,11 +1,10 @@
-from .constants import OPERATORS
+from .constants import OPERATORS, INDENT
 from .element import HTMLElement
 from . import utils
 
 class Node(object):
     @staticmethod
-    def create(haml, nested_haml='', parent=None):
-        indentation = utils.indentation(haml)
+    def create(haml, nested_haml='', parent=None, indentation=-1):
         haml = haml.strip()
 
         NODES = {
@@ -16,6 +15,9 @@ class Node(object):
             '=': EvalNode,
             '!!!': DoctypeNode,
             '\\': PlainNode,
+
+            # Filters
+            ':plain': PlainFilterNode,
         }
 
         for operator, cls in NODES.items():
@@ -24,7 +26,7 @@ class Node(object):
 
         return PlainNode(haml, nested_haml, parent, indentation=indentation)
 
-    def __init__(self, haml, nested_haml='', parent=None, indentation=0):
+    def __init__(self, haml, nested_haml='', parent=None, indentation=-1):
         self.haml = haml
         self.parent = parent
         self.siblings = {'left': [], 'right': []}
@@ -34,7 +36,7 @@ class Node(object):
         if isinstance(nested_haml, list):
             lines = nested_haml
         else:
-            lines = [line.rstrip() for line in nested_haml.split('\n') if line]
+            lines = [line for line in nested_haml.split('\n') if line]
 
         while lines:
             line = lines.pop(0)
@@ -43,13 +45,13 @@ class Node(object):
 
             MULTILINE = OPERATORS['multiline']
 
-            if line.endswith(MULTILINE):
-                m_lines = [line]
+            if line.rstrip().endswith(MULTILINE):
+                m_lines = [line.rstrip()]
 
                 while True:
                     try:
                         if lines[0].endswith(MULTILINE):
-                            m_lines.append(lines.pop(0))
+                            m_lines.append(lines.pop(0).rstrip())
                         else:
                             break
                     except IndexError:
@@ -71,10 +73,7 @@ class Node(object):
                 except IndexError:
                     break
 
-            node = Node.create(line, nested_lines, parent=self)
-
-            if not node:
-                continue
+            node = Node.create(line, nested_lines, parent=self, indentation=self.indentation + 1)
 
             for child in self.children:
                 node.add_sibling('left', child)
@@ -117,7 +116,22 @@ class Node(object):
         return '\n'.join(rendered_children)
 
     def to_html(self):
-        return self.render_children()
+        html = self.render_children()
+
+        if html:
+            html += '\n'
+
+        return html
+
+class PlainFilterNode(Node):
+    def __init__(self, haml, nested_haml='', parent=None, indentation=-1):
+        self.haml = haml
+        self.nested_haml = nested_haml
+        self.parnet = parent
+        self.indentation = indentation
+
+    def to_html(self):
+        return '\n'.join([line[INDENT:] for line in self.nested_haml])
 
 class PlainNode(Node):
     def to_html(self):

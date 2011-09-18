@@ -11,3 +11,5 @@ OPERATORS = {
     'escape': '\\',
     'multiline': '|',
 }
+
+INDENT = 2
