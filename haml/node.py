@@ -10,29 +10,30 @@ class Node(object):
     def create(haml, nested_haml='', parent=None, indentation=-1):
         haml = haml.strip()
 
-        NODES = {
-            '%': HTMLNode,
-            '#': HTMLNode,
-            '.': HTMLNode,
-            '-': CodeNode,
-            '=': EvalNode,
-            '/': HTMLCommentNode,
-            '/[': ConditionalHTMLCommentNode,
-            '-#': HAMLComment,
-            '!!!': DoctypeNode,
-            '\\': RawNode,
+        NODES = [
+            (HAMLComment, '-#'),
+            (HTMLCommentNode, '/'),
+            (HTMLNode, ('#', '.', '%')),
+            (CodeNode, '-'),
+            (EvalNode, '='),
+            (DoctypeNode, '!!!'),
+            (RawNode, '\\'),
 
             # Filters
-            ':plain': PlainFilterNode,
-            ':javascript': JavaScriptFilterNode,
-            ':css': CssFilterNode,
-            ':cdata': CdataFilterNode,
-            ':escaped': EscapedFilterNode,
-        }
+            (PlainFilterNode, ':plain'),
+            (JavaScriptFilterNode, ':javascript'),
+            (CssFilterNode, ':css'),
+            (CdataFilterNode, ':cdata'),
+            (EscapedFilterNode, ':escaped'),
+        ]
 
-        for operator, cls in NODES.items():
-            if haml.startswith(operator):
-                return cls(haml, nested_haml, parent, indentation=indentation)
+        for cls, operators in NODES:
+            if not isinstance(operators, tuple):
+                operators = (operators,)
+
+            for operator in operators:
+                if haml.startswith(operator):
+                    return cls(haml, nested_haml, parent, indentation=indentation)
 
         return RawNode(haml, nested_haml, parent, indentation=indentation)
 
@@ -179,35 +180,26 @@ class HTMLNode(Node):
         return HTMLElement(self.haml).render(self.render_children(), indentation=indentation)
 
 class HTMLCommentNode(Node):
-    @property
-    def _start(self):
-        return '<!--'
-
-    @property
-    def _end(self):
-        return '-->'
-
     def to_html(self):
+        conditionals = re.findall(r'^/\[(.*?)\]', self.haml)
+
+        if conditionals:
+            start = '<!--[%s]>' % conditionals[0]
+            end = '<!endif-->'
+        else:
+            start = '<!--'
+            end = '-->'
+
         rendered_children = self.render_children()
 
         if rendered_children:
-            return '\n'.join([self._indent(self._start), rendered_children, self._indent(self._end)])
+            return '\n'.join([self._indent(start), rendered_children, self._indent(end)])
 
-        return self._indent(' '.join([self._start, self.haml.lstrip(OPERATORS['html-comment']).lstrip(), self._end]))
+        return self._indent(' '.join([start, self.haml.lstrip(OPERATORS['html-comment']).lstrip(), end]))
 
 class HAMLComment(Node):
     def to_html(self):
         return None
-
-class ConditionalHTMLCommentNode(HTMLCommentNode):
-    @property
-    def _start(self):
-        return '<!--[%s]>' % re.findall(r'^/\[(.*?)\]', self.haml)[0]
-
-    @property
-    def _end(self):
-        return '<![endif]-->'
-
 class EvalNode(Node):
     def to_html(self):
         return self._indent('{{ %s }}' % (self.haml.lstrip(OPERATORS['evaluate']).strip()))

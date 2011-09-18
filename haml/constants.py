@@ -4,7 +4,6 @@ OPERATORS = {
     'class': '.',
     'doctype': '!!!',
     'html-comment': '/',
-    'conditional-html-comment': '/[',
     'haml-comment': '-#',
     'evaluate': '=',
     'code': '-',
