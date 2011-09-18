@@ -129,4 +129,4 @@ class HTMLElement(object):
 
             buf.append(utils.indent('</%s>' % self.tag, indentation))
 
-        return ''.join(buf)
+        return ''.join(map(str, buf))

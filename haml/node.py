@@ -238,7 +238,7 @@ class CodeNode(Node):
             try:
                 continuation = self.LOGIC[self._op].get('continuation')
 
-                if  not (sibling and isinstance(sibling, CodeNode)) or not continuation or sibling._op in continuation:
+                if  not sibling or not isinstance(sibling, CodeNode) or not continuation or sibling._op not in continuation:
                     buf.append(self._indent('{% ' + self.LOGIC[self._op]['close'] + ' %}'))
             except KeyError:
                 pass
