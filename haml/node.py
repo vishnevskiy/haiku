@@ -3,6 +3,8 @@ from .element import HTMLElement
 from . import utils
 
 class Node(object):
+    PARSE = True
+
     @staticmethod
     def create(haml, nested_haml='', parent=None, indentation=-1):
         haml = haml.strip()
@@ -14,24 +16,32 @@ class Node(object):
             '-': CodeNode,
             '=': EvalNode,
             '!!!': DoctypeNode,
-            '\\': PlainNode,
+            '\\': RawNode,
 
             # Filters
             ':plain': PlainFilterNode,
+            ':javascript': JavaScriptFilterNode,
+            ':css': CssFilterNode,
+            ':cdata': CdataFilterNode,
+            ':escaped': EscapedFilterNode,
         }
 
         for operator, cls in NODES.items():
             if haml.startswith(operator):
                 return cls(haml, nested_haml, parent, indentation=indentation)
 
-        return PlainNode(haml, nested_haml, parent, indentation=indentation)
+        return RawNode(haml, nested_haml, parent, indentation=indentation)
 
     def __init__(self, haml, nested_haml='', parent=None, indentation=-1):
         self.haml = haml
+        self.nested_haml = nested_haml
         self.parent = parent
         self.siblings = {'left': [], 'right': []}
         self.children = []
         self.indentation = indentation
+
+        if not self.PARSE:
+            return
 
         if isinstance(nested_haml, list):
             lines = nested_haml
@@ -40,7 +50,7 @@ class Node(object):
 
         while lines:
             line = lines.pop(0)
-            
+
             line_indentation = utils.indentation(line)
 
             MULTILINE = OPERATORS['multiline']
@@ -123,17 +133,7 @@ class Node(object):
 
         return html
 
-class PlainFilterNode(Node):
-    def __init__(self, haml, nested_haml='', parent=None, indentation=-1):
-        self.haml = haml
-        self.nested_haml = nested_haml
-        self.parnet = parent
-        self.indentation = indentation
-
-    def to_html(self):
-        return '\n'.join([line[INDENT:] for line in self.nested_haml])
-
-class PlainNode(Node):
+class RawNode(Node):
     def to_html(self):
         content = self.haml
 
@@ -215,3 +215,56 @@ class CodeNode(Node):
                 pass
 
         return '\n'.join(filter(bool, buf))
+
+class PlainFilterNode(Node):
+    PARSE = False
+
+    def to_html(self):
+        return '\n'.join([line[INDENT:] for line in self.nested_haml])
+
+class EscapedFilterNode(PlainFilterNode):
+    PARSE = False
+
+    def to_html(self):
+        return utils.xhtml_escape(PlainFilterNode.to_html(self))
+
+class CdataFilterNode(Node):
+    PARSE = False
+
+    def to_html(self):
+        buf = [self._indent('//<![CDATA[', self.indentation)]
+
+        for line in self.nested_haml:
+            buf.append(line[INDENT:])
+
+        buf.append(self._indent('//]]>', self.indentation))
+
+        return '\n'.join(buf)
+
+class JavaScriptFilterNode(Node):
+    PARSE = False
+
+    def to_html(self):
+        buf = [self._indent('<script type="text/javascript">'), self._indent('//<![CDATA[', self.indentation + 1)]
+
+        for line in self.nested_haml:
+            buf.append(line[INDENT:])
+
+        buf.append(self._indent('//]]>', self.indentation + 1))
+        buf.append(self._indent('</script>'))
+
+        return '\n'.join(buf)
+
+class CssFilterNode(Node):
+    PARSE = False
+
+    def to_html(self):
+        buf = [self._indent('<style type="text/css">'), self._indent('//<![CDATA[', self.indentation + 1)]
+
+        for line in self.nested_haml:
+            buf.append(line[INDENT:])
+
+        buf.append(self._indent('//]]>', self.indentation + 1))
+        buf.append(self._indent('</style>'))
+
+        return '\n'.join(buf)
