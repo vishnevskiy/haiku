@@ -1,3 +1,4 @@
+import re
 from .constants import OPERATORS, INDENT
 from .element import HTMLElement
 from . import utils
@@ -15,6 +16,9 @@ class Node(object):
             '.': HTMLNode,
             '-': CodeNode,
             '=': EvalNode,
+            '/': HTMLCommentNode,
+            '/[': ConditionalHTMLCommentNode,
+            '-#': HAMLComment,
             '!!!': DoctypeNode,
             '\\': RawNode,
 
@@ -121,7 +125,10 @@ class Node(object):
         rendered_children = []
 
         for children in self.children:
-            rendered_children.append(children.to_html())
+            html = children.to_html()
+
+            if html is not None:
+                rendered_children.append(html)
 
         return '\n'.join(rendered_children)
 
@@ -170,6 +177,36 @@ class HTMLNode(Node):
 #            current = current.parent
 
         return HTMLElement(self.haml).render(self.render_children(), indentation=indentation)
+
+class HTMLCommentNode(Node):
+    @property
+    def _start(self):
+        return '<!--'
+
+    @property
+    def _end(self):
+        return '-->'
+
+    def to_html(self):
+        rendered_children = self.render_children()
+
+        if rendered_children:
+            return '\n'.join([self._indent(self._start), rendered_children, self._indent(self._end)])
+
+        return self._indent(' '.join([self._start, self.haml.lstrip(OPERATORS['html-comment']).lstrip(), self._end]))
+
+class HAMLComment(Node):
+    def to_html(self):
+        return None
+
+class ConditionalHTMLCommentNode(HTMLCommentNode):
+    @property
+    def _start(self):
+        return '<!--[%s]>' % re.findall(r'^/\[(.*?)\]', self.haml)[0]
+
+    @property
+    def _end(self):
+        return '<![endif]-->'
 
 class EvalNode(Node):
     def to_html(self):
