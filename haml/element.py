@@ -3,7 +3,16 @@ from . import utils
 import re
 
 _AUTOCLOSE = ('meta', 'img', 'link', 'br', 'hr', 'input', 'area', 'param', 'col', 'base',)
-_HAML_REGEX = re.compile(r'(?P<tag>%\w+)?(?P<id>#[:_\w-]*)?(?P<class>\.[:\w\.-]*)*(?P<attributes>\{.*\})?(?P<autoclose>/)?(?P<evaluate>=)?(?P<content>[^\w\.#\{].*)?')
+_HAML_REGEX = re.compile(
+    r'(?P<tag>%\w+)?'
+    r'(?P<id>#[:_\w-]*)?'
+    r'(?P<class>\.[:\w\.-]*)*'
+    r'(?P<attributes>\(.*\))?'
+    r'(?P<dict>\{.*\})?'
+    r'(?P<autoclose>/)?'
+    r'(?P<evaluate>=)?'
+    r'(?P<content>[^\w\.#\{].*)?'
+)
 _NEWLINE = '\n'
 
 class HTMLElement(object):
@@ -41,8 +50,19 @@ class HTMLElement(object):
         self.tag = groups.get('tag').strip(OPERATORS['element']) or 'div'
 
         # Parse Atttributes
-        attributes = groups.get('attributes')
+        attributes = groups.get('dict')
         self.attributes = eval(attributes) if attributes else {}
+
+        attributes = groups.get('attributes')
+
+        if attributes:
+            for pair in attributes[1:-1].split(','):
+                k, _, v = pair.partition('=')
+
+                if v.startswith('@'):
+                    v = '= ' + v[1:]
+
+                self.attributes[k] = v
 
         # Parse Elemnt Id
         self.id = [groups.get('id', '').lstrip(OPERATORS['id'])]
