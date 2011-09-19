@@ -56,11 +56,28 @@ class HTMLElement(object):
         attributes = groups.get('attributes')
 
         if attributes:
-            for pair in attributes[1:-1].split(','):
-                k, _, v = pair.partition('=')
+            carry = []
 
-                if v.startswith('@'):
-                    v = '= ' + v[1:]
+            for pair in attributes[1:-1].split(' ')[::-1]:
+                k, eq, v = map(str.strip, pair.partition('='))
+
+                if not eq and not v:
+                    carry.append(k)
+                    continue
+
+                if carry:
+                    carry.append(v)
+                    v = ' '.join(carry[::-1])
+                    carry = []
+
+                if not v:
+                    continue
+
+                if not (v.startswith('"') or v.startswith("'")):
+                    if not v.isdigit():
+                        v = '= ' + v
+                else:
+                    v = v[1:-1]
 
                 self.attributes[k] = v
 
