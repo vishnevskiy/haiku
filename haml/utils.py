@@ -2,9 +2,9 @@ from .constants import INDENT
 import re
 
 def indent(line, indentation):
-    if not indentation:
+    if not indentation or not line:
         return line
-    
+
     spaces = ''.join([' ' for _ in xrange(indentation * INDENT)])
     return spaces + line
 

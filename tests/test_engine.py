@@ -1,9 +1,9 @@
 import unittest
-from haml import HAML
+from haml import HAML, Tornado
 
 class EngineTest(unittest.TestCase):
     def _render(self, v):
-        return HAML(v).to_html()
+        return HAML(v, target=Tornado).to_html()
 
     def test_empty_render(self):
         self.assertEqual('', self._render(''))

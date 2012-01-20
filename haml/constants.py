@@ -9,6 +9,8 @@ OPERATORS = {
     'code': '-',
     'escape': '\\',
     'multiline': '|',
-}
+    'innerstrip': '<',
+    'outerstrip': '>',
+    }
 
 INDENT = 2

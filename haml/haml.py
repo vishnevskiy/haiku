@@ -1,8 +1,10 @@
 from .node import Node
+from .target import Default
 
 class HAML(object):
-    def __init__(self, haml):
-        self.haml = Node('', haml)
+    def __init__(self, haml, target=Default):
+        self.node = Node(self, '', haml)
+        self.target = target()
 
     def __str__(self):
         return self.to_html()
@@ -11,5 +13,5 @@ class HAML(object):
         return self.to_html()
 
     def to_html(self):
-        return self.haml.to_html()
+        return self.node.to_html()
         

@@ -9,6 +9,8 @@ _HAML_REGEX = re.compile(
     r'(?P<class>\.[:\w\.-]*)*'
     r'(?P<attributes>\(.*\))?'
     r'(?P<dict>\{.*\})?'
+    r'(?P<innerstrip><)?'
+    r'(?P<outerstrip>>)?'
     r'(?P<autoclose>/)?'
     r'(?P<evaluate>=)?'
     r'(?P<content>[^\w\.#\{].*)?'
@@ -16,7 +18,9 @@ _HAML_REGEX = re.compile(
 _NEWLINE = '\n'
 
 class HTMLElement(object):
-    def __init__(self, haml):
+    def __init__(self, node):
+        self.node = node
+
         self.tag = None
         self.id = None
         self.classes = None
@@ -24,7 +28,7 @@ class HTMLElement(object):
         self.evaluate = False
         self.content = ''
 
-        self._parse_haml_line(haml)
+        self._parse_haml_line(node.haml)
 
     def get_attributes(self):
         attributes = []
@@ -59,7 +63,8 @@ class HTMLElement(object):
             carry = []
 
             for pair in attributes[1:-1].split(' ')[::-1]:
-                k, eq, v = map(str.strip, pair.partition('='))
+                parts = map(str.strip, pair.partition('='))
+                k, eq, v = parts
 
                 if not eq and not v:
                     carry.append(k)
@@ -96,7 +101,7 @@ class HTMLElement(object):
 
         # Parse Classes
         self.classes = set()
- 
+
         if 'class' in self.attributes:
             for class_ in self._flatten(self.attributes['class']):
                 if class_:
@@ -111,6 +116,8 @@ class HTMLElement(object):
         self.classes = sorted(self.classes)
 
         self.autoclose = not not groups.get('autoclose') or self.tag in _AUTOCLOSE
+        self.innerstrip = not not groups.get('innerstrip')
+        self.outerstrip = not not groups.get('outerstrip')
         self.evaluate = not not groups.get('evaluate')
         self.content = groups.get('content').strip()
 
@@ -119,9 +126,16 @@ class HTMLElement(object):
             return ''
 
         if isinstance(v, (str, unicode)) and v and v[0] == OPERATORS['evaluate']:
-            return '{{ %s }}' % (v.lstrip(OPERATORS['evaluate']).strip())
+            return self.node.parser.target.eval(v.lstrip(OPERATORS['evaluate']).strip())
 
-        return  utils.xhtml_escape(v)
+        v = str(v)
+
+        if re.match('#\{.+?\}', v):
+            v = v.replace('"', "'")
+        else:
+            v = utils.xhtml_escape(v)
+
+        return v
 
     def _flatten(self, iterable):
         if not isinstance(iterable, (list, tuple)):
@@ -139,7 +153,7 @@ class HTMLElement(object):
         inline_content = self.content
 
         if self.evaluate:
-            inline_content = '{{ %s }}' % inline_content
+            inline_content = self.node.parser.target.eval(inline_content)
 
         return inline_content
 
@@ -154,15 +168,23 @@ class HTMLElement(object):
         buf.append(utils.indent('<%s>' % ' '.join(filter(bool, attributes)), indentation))
 
         if not self.autoclose:
+            content_buf = []
+
             if self.content:
-                buf.append(self.get_inline_content())
+                content_buf.append(self.get_inline_content())
 
             if content:
-                buf.append(_NEWLINE)
-                buf.append(content)
-                buf.append(_NEWLINE)
+                content_buf.append(_NEWLINE)
+                content_buf.append(content)
+                content_buf.append(_NEWLINE)
             else:
                 indentation = 0
+
+            if self.innerstrip:
+                buf.append(''.join(content_buf).strip())
+                indentation = 0
+            else:
+                buf.extend(content_buf)
 
             buf.append(utils.indent('</%s>' % self.tag, indentation))
 

@@ -3,11 +3,16 @@ from .constants import OPERATORS, INDENT
 from .element import HTMLElement
 from . import utils
 
+class StripOuter(Exception):
+    def __init__(self, html, *args, **kwargs):
+        super(StripOuter, self).__init__(*args, **kwargs)
+        self.html = html
+
 class Node(object):
     PARSE = True
 
     @staticmethod
-    def create(haml, nested_haml='', parent=None, indentation=-1):
+    def create(parser, haml, nested_haml='', parent=None, indentation=-1):
         haml = haml.strip()
 
         NODES = [
@@ -15,9 +20,9 @@ class Node(object):
             (HTMLCommentNode, '/'),
             (HTMLNode, ('#', '.', '%')),
             (CodeNode, '-'),
-            (EvalNode, '='),
+            (EvalNode, ('=', '>=')),
             (DoctypeNode, '!!!'),
-            (RawNode, '\\'),
+            (RawNode, ('\\', '>')),
 
             # Filters
             (PlainFilterNode, ':plain'),
@@ -33,15 +38,19 @@ class Node(object):
 
             for operator in operators:
                 if haml.startswith(operator):
-                    return cls(haml, nested_haml, parent, indentation=indentation)
+                    return cls(parser, haml, nested_haml, parent, indentation=indentation)
 
-        return RawNode(haml, nested_haml, parent, indentation=indentation)
+        return RawNode(parser, haml, nested_haml, parent, indentation=indentation)
 
-    def __init__(self, haml, nested_haml='', parent=None, indentation=-1):
+    def __init__(self, parser, haml, nested_haml='', parent=None, indentation=-1):
+        self.parser = parser
         self.haml = haml
         self.nested_haml = nested_haml
         self.parent = parent
-        self.siblings = {'left': [], 'right': []}
+        self.siblings = {
+            'left': [],
+            'right': []
+        }
         self.children = []
         self.indentation = indentation
 
@@ -88,7 +97,7 @@ class Node(object):
                 except IndexError:
                     break
 
-            node = Node.create(line, nested_lines, parent=self, indentation=self.indentation + 1)
+            node = Node.create(self.parser, line, nested_lines, parent=self, indentation=self.indentation + 1)
 
             for child in self.children:
                 node.add_sibling('left', child)
@@ -125,25 +134,50 @@ class Node(object):
     def render_children(self):
         rendered_children = []
 
-        for children in self.children:
-            html = children.to_html()
+        outerstrip = False
+        length = len(self.children)
+
+        for i, child in enumerate(self.children):
+            lstrip = outerstrip
+
+            try:
+                html = child.to_html()
+                outerstrip = False
+            except StripOuter as so:
+                html = so.html
+                outerstrip = True
+
+                if rendered_children:
+                    rendered_children[-1] = rendered_children[-1].rstrip()
+
+            if lstrip:
+                html = html.lstrip()
 
             if html is not None:
-                rendered_children.append(html)
+                if outerstrip:
+                    rendered_children.append(html.strip())
+                else:
+                    if i < length - 1:
+                        html += '\n'
 
-        return '\n'.join(rendered_children)
+                    rendered_children.append(html)
+
+        return ''.join(rendered_children)
 
     def to_html(self):
         html = self.render_children()
 
         if html:
-            html += '\n'
+            html = re.sub(r'#\{(.*?)\}', self.parser.target.eval('\\1'), html + '\n')
 
         return html
 
 class RawNode(Node):
     def to_html(self):
         content = self.haml
+
+        if content.startswith(OPERATORS['outerstrip']):
+            raise StripOuter(self._indent(content[1:]))
 
         if content.startswith(OPERATORS['escape']):
             content = content[1:]
@@ -169,15 +203,13 @@ class HTMLNode(Node):
     def to_html(self):
         indentation = self.indentation
 
-#        current = self.parent
-#
-#        while current:
-#            if isinstance(current, CodeNode):
-#                indentation = current.indentation
-#
-#            current = current.parent
+        element =  HTMLElement(self)
+        html = element.render(self.render_children(), indentation=indentation)
 
-        return HTMLElement(self.haml).render(self.render_children(), indentation=indentation)
+        if element.outerstrip:
+            raise StripOuter(html)
+        else:
+            return html
 
 class HTMLCommentNode(Node):
     def to_html(self):
@@ -200,50 +232,32 @@ class HTMLCommentNode(Node):
 class HAMLComment(Node):
     def to_html(self):
         return None
+
 class EvalNode(Node):
     def to_html(self):
-        return self._indent('{{ %s }}' % (self.haml.lstrip(OPERATORS['evaluate']).strip()))
+        content = self._indent(self.parser.target.eval(self.haml.lstrip(OPERATORS['outerstrip']).lstrip(OPERATORS['evaluate']).strip()))
+
+        if self.haml.startswith(OPERATORS['outerstrip']):
+            raise StripOuter(content)
+
+        return content
 
 class CodeNode(Node):
-    LOGIC = {
-        'for': {
-            'close': 'end',
-        },
-        'if' : {
-            'close': 'end',
-            'continuation': ['elif', 'else'],
-        },
-        'elif': {
-            'continuation': ['else'],
-            'close': 'end',
-            },
-        'else': {
-            'close': 'end',
-            },
-        'block': {
-            'close': 'end',
-        },
-    }
-
     def __init__(self, *args, **kwargs):
         Node.__init__(self, *args, **kwargs)
-        self._op = self.haml.strip().split(' ')[1]
+
+        parts = self.haml.lstrip(OPERATORS['code']).strip().split(' ', 1)
+
+        self.keyword = parts[0]
+        self.expression = ''
+
+        if len(parts) > 1:
+            self.expression = parts[1]
 
     def to_html(self):
-        buf = [self._indent('{% ' + self.haml.lstrip(OPERATORS['code']).strip() + ' %}'), self.render_children()]
+        open, close = self.parser.target.block(self, self.keyword, self.expression)
 
-        if self._op in self.LOGIC:
-            sibling = self.get_sibling(1)
-
-            try:
-                continuation = self.LOGIC[self._op].get('continuation')
-
-                if  not sibling or not isinstance(sibling, CodeNode) or not continuation or sibling._op not in continuation:
-                    buf.append(self._indent('{% ' + self.LOGIC[self._op]['close'] + ' %}'))
-            except KeyError:
-                pass
-
-        return '\n'.join(filter(bool, buf))
+        return '\n'.join(filter(bool, (self._indent(open), self.render_children(), self._indent(close))))
 
 class PlainFilterNode(Node):
     PARSE = False
