@@ -103,6 +103,14 @@ class Underscore(Default):
     def __init__(self):
         self._ref = 0
 
+    def _transform_expression(self, expression):
+        expression = expression.replace(' or ', ' || ')
+        expression = expression.replace(' and ', ' && ')
+        expression = expression.replace(' == ', ' === ')
+        expression = expression.replace(' != ', ' !== ')
+        expression = expression.replace(' not ', ' !')
+        return expression
+
     def block(self, node, keyword, expression):
         if keyword == 'for':
             var, enumerable = expression.split(' in ')
@@ -118,4 +126,7 @@ class Underscore(Default):
 
             return self.CONTROL % (FOR % {'ref': self._ref,'enumerable': enumerable, 'var': var}), self.CONTROL % '}'
         else:
-            return super(Underscore, self).block(node, keyword, expression)
+            return Underscore.block(self, node, keyword, self._transform_expression(expression))
+
+    def eval(self, input):
+        return Underscore.eval(self, self._transform_expression(input))
