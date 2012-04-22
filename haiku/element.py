@@ -130,7 +130,7 @@ class HTMLElement(object):
 
         v = str(v)
 
-        if re.match('#\{.+?\}', v):
+        if '#{' in v or '{%' in v or '{{' in v or '<%' in v:
             v = v.replace('"', "'")
         else:
             v = utils.xhtml_escape(v)

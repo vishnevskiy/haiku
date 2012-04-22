@@ -1,4 +1,5 @@
 from .node import CodeNode
+import re
 
 class Default(object):
     CONTROL = '%s'
@@ -38,8 +39,8 @@ class Default(object):
         return self.EVAL % input
 
 class Tornado(Default):
-    CONTROL = '{%% %s %%}'
-    EVAL = '{{ %s }}'
+    CONTROL = '{%%%s%%}'
+    EVAL = '{{%s}}'
     RULES = {
         'for': {
             'close': 'end',
@@ -68,8 +69,8 @@ class Tornado(Default):
 
 
 class Underscore(Default):
-    CONTROL = '<%% %s %%>'
-    EVAL = '<%%= %s %%>'
+    CONTROL = '<%%%s%%>'
+    EVAL = '<%%=%s%%>'
     RULES = {
         'for': {
             'open': 'for (%(expression)s) {',
@@ -96,7 +97,7 @@ class Underscore(Default):
             'close': '}',
         },
         'set': {
-            'open': 'var %(keyword)s %(expression)s;'
+            'open': 'var %(expression)s;'
         }
     }
 
@@ -104,11 +105,11 @@ class Underscore(Default):
         self._ref = 0
 
     def _transform_expression(self, expression):
-        expression = expression.replace(' or ', ' || ')
-        expression = expression.replace(' and ', ' && ')
-        expression = expression.replace(' == ', ' === ')
-        expression = expression.replace(' != ', ' !== ')
-        expression = expression.replace(' not ', ' !')
+        expression = re.sub(r'(^|\s)or ', ' || ', expression)
+        expression = re.sub(r'(^|\s)and ', ' && ', expression)
+        expression = re.sub(r'(^|\s)== ', ' === ', expression)
+        expression = re.sub(r'(^|\s)!= ', ' !== ', expression)
+        expression = re.sub(r'(^|\s)not ', ' !', expression)
         return expression
 
     def block(self, node, keyword, expression):
@@ -126,7 +127,7 @@ class Underscore(Default):
 
             return self.CONTROL % (FOR % {'ref': self._ref,'enumerable': enumerable, 'var': var}), self.CONTROL % '}'
         else:
-            return Underscore.block(self, node, keyword, self._transform_expression(expression))
+            return Default.block(self, node, keyword, self._transform_expression(expression))
 
     def eval(self, input):
-        return Underscore.eval(self, self._transform_expression(input))
+        return Default.eval(self, self._transform_expression(input))

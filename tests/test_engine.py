@@ -1,5 +1,5 @@
 import unittest
-from haml import HAML, Tornado
+from haiku import HAML, Tornado
 
 class EngineTest(unittest.TestCase):
     def _render(self, v):

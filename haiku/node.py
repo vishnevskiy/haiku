@@ -257,7 +257,7 @@ class CodeNode(Node):
     def to_html(self):
         open, close = self.parser.target.block(self, self.keyword, self.expression)
 
-        return '\n'.join(filter(bool, (self._indent(open), self.render_children(), self._indent(close))))
+        return ''.join(map(str.strip, (open, self.render_children(), close)))
 
 class PlainFilterNode(Node):
     PARSE = False
